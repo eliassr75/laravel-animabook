@@ -1,0 +1,36 @@
+services:
+  queue_high:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: animabook_queue_high
+    working_dir: /var/www/animabook
+    volumes:
+      - .:/var/www/animabook
+    env_file:
+      - .env
+    command: ["php", "artisan", "queue:work", "--queue=high", "--sleep=1", "--tries=3", "--timeout=120"]
+
+  queue_default:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: animabook_queue_default
+    working_dir: /var/www/animabook
+    volumes:
+      - .:/var/www/animabook
+    env_file:
+      - .env
+    command: ["php", "artisan", "queue:work", "--queue=default", "--sleep=1", "--tries=3", "--timeout=120"]
+
+  queue_low:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: animabook_queue_low
+    working_dir: /var/www/animabook
+    volumes:
+      - .:/var/www/animabook
+    env_file:
+      - .env
+    command: ["php", "artisan", "queue:work", "--queue=low", "--sleep=2", "--tries=3", "--timeout=120"]
