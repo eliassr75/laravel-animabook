@@ -106,6 +106,6 @@ Schedule::job(new SeedGenresJob)->dailyAt('04:00');
 Schedule::job(new SeedProducersJob)->weekly()->at('05:00');
 Schedule::job(new SeedMagazinesJob)->weekly()->at('05:30');
 Schedule::job(new SeedClubsJob)->weekly()->at('06:00');
-Schedule::job(new SeedWatchJob)->dailyAt('06:30');
+Schedule::job(new SeedWatchJob)->hourly();
 Schedule::job(new SeedPeopleFromRelationsJob)->dailyAt('02:30');
 Schedule::command('seo:sitemap:refresh --write-file')->everyThirtyMinutes();
