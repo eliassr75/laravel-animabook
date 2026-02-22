@@ -15,8 +15,6 @@ services:
             WORKER_MEMORY: 512
             WORKER_MAX_JOBS: 1000
             WORKER_MAX_TIME: 3600
-            DB_HOST: ${WORKER_DB_HOST:-host.docker.internal}
-            DB_PORT: ${WORKER_DB_PORT:-3306}
         volumes:
             - ./.env:/var/www/.env.host:ro
         extra_hosts:
@@ -38,8 +36,6 @@ services:
             WORKER_MEMORY: 512
             WORKER_MAX_JOBS: 1000
             WORKER_MAX_TIME: 3600
-            DB_HOST: ${WORKER_DB_HOST:-host.docker.internal}
-            DB_PORT: ${WORKER_DB_PORT:-3306}
         volumes:
             - ./.env:/var/www/.env.host:ro
         extra_hosts:
@@ -61,8 +57,6 @@ services:
             WORKER_MEMORY: 512
             WORKER_MAX_JOBS: 1000
             WORKER_MAX_TIME: 3600
-            DB_HOST: ${WORKER_DB_HOST:-host.docker.internal}
-            DB_PORT: ${WORKER_DB_PORT:-3306}
         volumes:
             - ./.env:/var/www/.env.host:ro
         extra_hosts:
@@ -78,8 +72,6 @@ services:
         environment:
             APP_ENV: production
             QUEUE_CONNECTION: database
-            DB_HOST: ${WORKER_DB_HOST:-host.docker.internal}
-            DB_PORT: ${WORKER_DB_PORT:-3306}
         volumes:
             - ./.env:/var/www/.env.host:ro
         extra_hosts:
