@@ -12,10 +12,12 @@ class TopController extends Controller
 {
     public function __invoke(CatalogRepository $catalog): Response
     {
-        $filters = request()->only(['search', 'year', 'season', 'status', 'sort', 'genre', 'type']);
+        $filters = request()->only(['search', 'year', 'season', 'status', 'sort', 'sort_dir', 'genre', 'type', 'min_rank', 'max_rank']);
         if (! isset($filters['sort'])) {
             $filters['sort'] = 'rank';
         }
+        $filters['min_rank'] = max(1, (int) ($filters['min_rank'] ?? 1));
+
         $items = $catalog->list('anime', $filters, 24);
 
         return Inertia::render('CatalogList', [

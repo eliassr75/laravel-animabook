@@ -165,6 +165,10 @@ class CatalogRepository
             $query->where('rank', '<=', (int) $filters['max_rank']);
         }
 
+        if (isset($filters['min_rank']) && $filters['min_rank'] !== '') {
+            $query->where('rank', '>=', (int) $filters['min_rank']);
+        }
+
         if (isset($filters['min_members']) && $filters['min_members'] !== '') {
             $query->where('members', '>=', (int) $filters['min_members']);
         }

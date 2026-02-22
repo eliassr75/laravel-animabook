@@ -22,6 +22,7 @@ class HomeController extends Controller
 
         $topAnime = CatalogEntity::query()
             ->type('anime')
+            ->where('rank', '>=', 1)
             ->orderBy('rank')
             ->limit(6)
             ->get();

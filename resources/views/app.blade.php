@@ -10,6 +10,7 @@
         $seoOgType = trim((string) data_get($seo, 'ogType', 'website'));
         $seoSiteName = trim((string) data_get($seo, 'siteName', config('app.name', 'Animabook')));
         $seoTwitterSite = trim((string) data_get($seo, 'twitterSite', ''));
+        $iconVersion = (string) (@filemtime(public_path('favicon.ico')) ?: '');
     @endphp
     <head>
         <meta charset="utf-8">
@@ -76,9 +77,11 @@
 
         <title inertia>{{ $seoTitle !== '' ? $seoTitle : config('app.name', 'Animabook') }}</title>
 
-        <link rel="icon" type="image/png" href="/img/ico.png">
-        <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="apple-touch-icon" href="/img/ico.png">
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png{{ $iconVersion !== '' ? '?v='.$iconVersion : '' }}">
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png{{ $iconVersion !== '' ? '?v='.$iconVersion : '' }}">
+        <link rel="icon" href="/favicon.ico{{ $iconVersion !== '' ? '?v='.$iconVersion : '' }}" sizes="any">
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg{{ $iconVersion !== '' ? '?v='.$iconVersion : '' }}">
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png{{ $iconVersion !== '' ? '?v='.$iconVersion : '' }}">
 
         @viteReactRefresh
         @vite(['resources/js/app.tsx', "resources/js/pages/{$page['component']}.tsx"])
