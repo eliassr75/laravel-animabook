@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Domain\Catalog\CatalogRepository;
+use App\Jobs\SyncEntityJob;
 use App\Models\CatalogEntity;
 use App\Models\EntityRelation;
 use App\Models\UserReview;
 use App\Services\UserMediaActionsService;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -19,6 +21,7 @@ class MangaController extends Controller
             'year',
             'season',
             'status',
+            'sync_status',
             'sort',
             'sort_dir',
             'genre',
@@ -56,7 +59,11 @@ class MangaController extends Controller
         $entity = $catalog->find('manga', $malId);
 
         if (! $entity) {
-            abort(404);
+            return Inertia::render('CatalogSyncPending', [
+                'mediaType' => 'manga',
+                'malId' => $malId,
+                'queuedNow' => $this->queueSyncIfNeeded('manga', $malId),
+            ]);
         }
 
         $relationPayload = collect(data_get($entity->payload_full, 'relations', data_get($entity->payload, 'relations', [])));
@@ -392,5 +399,21 @@ class MangaController extends Controller
         }
 
         return $map[strtolower($type).":{$malId}"] ?? null;
+    }
+
+    private function queueSyncIfNeeded(string $entityType, int $malId): bool
+    {
+        if ($malId < 1) {
+            return false;
+        }
+
+        $lockKey = "sync:request:{$entityType}:{$malId}";
+        $queuedNow = Cache::add($lockKey, true, now()->addMinutes(10));
+
+        if ($queuedNow) {
+            SyncEntityJob::dispatch($entityType, $malId)->onQueue('high');
+        }
+
+        return $queuedNow;
     }
 }

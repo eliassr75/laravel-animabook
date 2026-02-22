@@ -109,6 +109,10 @@ class CatalogRepository
             'seasons' => $seasons,
             'types' => $types,
             'genres' => $genres,
+            'syncStatuses' => [
+                ['value' => 'synced', 'label' => 'Sincronizados'],
+                ['value' => 'pending', 'label' => 'Pendentes de sync'],
+            ],
             'sorts' => [
                 'score',
                 'rank',
@@ -147,6 +151,17 @@ class CatalogRepository
 
         if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
+        }
+
+        if (! empty($filters['sync_status'])) {
+            $syncFilter = mb_strtolower((string) $filters['sync_status']);
+            if (in_array($syncFilter, ['synced', 'sincronizado', 'sincronizados'], true)) {
+                $query->whereNotNull('payload_full');
+            }
+
+            if (in_array($syncFilter, ['pending', 'pendente', 'pendentes'], true)) {
+                $query->whereNull('payload_full');
+            }
         }
 
         if (! empty($filters['type'])) {

@@ -24,12 +24,16 @@ export function xsrfTokenFromCookie(): string {
 }
 
 export function authJsonHeaders(extra?: HeadersInit): HeadersInit {
+  const xsrf = xsrfTokenFromCookie();
+  const csrf = csrfToken();
+
   return {
     "Content-Type": "application/json",
     Accept: "application/json",
     "X-Requested-With": "XMLHttpRequest",
-    "X-CSRF-TOKEN": csrfToken(),
-    "X-XSRF-TOKEN": xsrfTokenFromCookie(),
+    ...(xsrf
+      ? { "X-XSRF-TOKEN": xsrf }
+      : (csrf ? { "X-CSRF-TOKEN": csrf } : {})),
     ...(extra ?? {}),
   };
 }

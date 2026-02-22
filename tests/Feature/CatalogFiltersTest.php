@@ -91,3 +91,39 @@ it('filters anime list by season using pt-br label', function () {
     expect($page['props']['items'])->toHaveCount(1);
     expect($page['props']['items'][0]['malId'])->toBe($animeSpring->mal_id);
 });
+
+it('filters anime list by synchronization status', function () {
+    makeCatalogEntity([
+        'entity_type' => 'anime',
+        'mal_id' => 301,
+        'title' => 'Anime Sincronizado',
+        'score' => 8.9,
+        'payload' => ['type' => 'TV'],
+        'payload_full' => ['stats' => ['completed' => 100]],
+    ]);
+
+    makeCatalogEntity([
+        'entity_type' => 'anime',
+        'mal_id' => 302,
+        'title' => 'Anime Pendente',
+        'score' => 8.1,
+        'payload' => ['type' => 'TV'],
+        'payload_full' => null,
+    ]);
+
+    $syncedResponse = $this->get('/anime?sync_status=synced');
+    $syncedResponse->assertOk()->assertViewHas('page');
+
+    $syncedPage = $syncedResponse->viewData('page');
+    expect($syncedPage['component'])->toBe('AnimeList');
+    expect($syncedPage['props']['items'])->toHaveCount(1);
+    expect($syncedPage['props']['items'][0]['malId'])->toBe(301);
+
+    $pendingResponse = $this->get('/anime?sync_status=pending');
+    $pendingResponse->assertOk()->assertViewHas('page');
+
+    $pendingPage = $pendingResponse->viewData('page');
+    expect($pendingPage['component'])->toBe('AnimeList');
+    expect($pendingPage['props']['items'])->toHaveCount(1);
+    expect($pendingPage['props']['items'][0]['malId'])->toBe(302);
+});

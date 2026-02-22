@@ -32,6 +32,7 @@ interface AnimeListProps {
     statuses?: string[];
     seasons?: string[];
     types?: string[];
+    syncStatuses?: { value: string; label: string }[];
     sorts?: string[];
     genres?: { id: number; name: string }[];
   };
@@ -60,6 +61,9 @@ export default function AnimeList({
   );
   const [statusFilter, setStatusFilter] = useState<string>(
     typeof filters.status === "string" ? filters.status : "",
+  );
+  const [syncStatusFilter, setSyncStatusFilter] = useState<string>(
+    typeof filters.sync_status === "string" ? filters.sync_status : "",
   );
   const [yearFilter, setYearFilter] = useState<string>(
     typeof filters.year !== "undefined" && filters.year !== null ? String(filters.year) : "",
@@ -107,6 +111,7 @@ export default function AnimeList({
         search: search || undefined,
         genre: selectedGenre || undefined,
         status: statusFilter || undefined,
+        sync_status: syncStatusFilter || undefined,
         year: yearFilter || undefined,
         season: seasonFilter || undefined,
         type: typeFilter || undefined,
@@ -130,7 +135,7 @@ export default function AnimeList({
         onFinish: () => setIsApplyingFilters(false),
       });
     },
-    [currentPath, hasImageFilter, maxRankFilter, maxScoreFilter, minMembersFilter, minScoreFilter, search, seasonFilter, selectedGenre, sortBy, sortDirection, statusFilter, typeFilter, yearFilter, yearFromFilter, yearToFilter],
+    [currentPath, hasImageFilter, maxRankFilter, maxScoreFilter, minMembersFilter, minScoreFilter, search, seasonFilter, selectedGenre, sortBy, sortDirection, statusFilter, syncStatusFilter, typeFilter, yearFilter, yearFromFilter, yearToFilter],
   );
 
   useEffect(() => {
@@ -152,6 +157,13 @@ export default function AnimeList({
       }
       : null,
     statusFilter ? { key: "status", label: t("common.status"), value: statusFilter } : null,
+    syncStatusFilter
+      ? {
+        key: "sync_status",
+        label: "Sincronização",
+        value: filterOptions?.syncStatuses?.find((option) => option.value === syncStatusFilter)?.label ?? syncStatusFilter,
+      }
+      : null,
     yearFilter ? { key: "year", label: t("common.year"), value: yearFilter } : null,
     seasonFilter ? { key: "season", label: t("common.season"), value: formatSeason(seasonFilter) } : null,
     typeFilter ? { key: "type", label: t("common.type"), value: typeFilter } : null,
@@ -180,6 +192,10 @@ export default function AnimeList({
     if (key === "year") {
       setYearFilter("");
       submit({ year: undefined, page: 1 });
+    }
+    if (key === "sync_status") {
+      setSyncStatusFilter("");
+      submit({ sync_status: undefined, page: 1 });
     }
     if (key === "season") {
       setSeasonFilter("");
@@ -222,6 +238,7 @@ export default function AnimeList({
   const clearAll = () => {
     setSelectedGenre("");
     setStatusFilter("");
+    setSyncStatusFilter("");
     setYearFilter("");
     setSeasonFilter("");
     setTypeFilter("");
@@ -237,6 +254,7 @@ export default function AnimeList({
       search: undefined,
       genre: undefined,
       status: undefined,
+      sync_status: undefined,
       year: undefined,
       season: undefined,
       type: undefined,
@@ -451,6 +469,28 @@ export default function AnimeList({
                     {(filterOptions?.years ?? []).map((year) => (
                       <SelectItem key={year} value={String(year)}>
                         {year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {(filterOptions?.syncStatuses ?? []).length > 0 && (
+                <Select
+                  value={syncStatusFilter}
+                  onValueChange={(value) => {
+                    const next = value === ALL_OPTION ? "" : value;
+                    setSyncStatusFilter(next);
+                    submit({ sync_status: next || undefined, page: 1 });
+                  }}
+                >
+                  <SelectTrigger size="sm" className="w-full text-xs">
+                    <SelectValue placeholder="Sincronização" />
+                  </SelectTrigger>
+                  <SelectContent align="start">
+                    <SelectItem value={ALL_OPTION}>Sincronização</SelectItem>
+                    {(filterOptions?.syncStatuses ?? []).map((status) => (
+                      <SelectItem key={status.value} value={status.value}>
+                        {status.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
