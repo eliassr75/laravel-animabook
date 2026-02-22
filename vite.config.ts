@@ -1,3 +1,7 @@
+import {
+    nativephpMobile,
+    nativephpHotFile,
+} from './vendor/nativephp/mobile/resources/js/vite-plugin.js';
 import { wayfinder } from '@laravel/vite-plugin-wayfinder';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
@@ -10,6 +14,7 @@ export default defineConfig({
             input: ['resources/css/app.css', 'resources/js/app.tsx'],
             ssr: 'resources/js/ssr.tsx',
             refresh: true,
+            hotFile: nativephpHotFile(),
         }),
         react({
             babel: {
@@ -17,6 +22,7 @@ export default defineConfig({
             },
         }),
         tailwindcss(),
+        nativephpMobile(),
         wayfinder({
             formVariants: true,
         }),

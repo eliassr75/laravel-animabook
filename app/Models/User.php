@@ -80,7 +80,7 @@ class User extends Authenticatable
     protected function gate(): void
     {
         Gate::define('viewTelescope', function (User $user) {
-            return $user->email == 'elias.craveiro@animabook.net';
+            return $user->email === 'elias.craveiro@animabook.net';
         });
     }
 }

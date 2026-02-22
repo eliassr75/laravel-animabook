@@ -16,6 +16,7 @@
         "laravel/telescope": "^5.17",
         "laravel/tinker": "^2.10.1",
         "laravel/wayfinder": "^0.1.9",
+        "nativephp/mobile": "^3.0",
         "sentry/sentry-laravel": "^4.20"
     },
     "require-dev": {
