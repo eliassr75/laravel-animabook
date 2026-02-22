@@ -1,36 +1,86 @@
 services:
-  queue_high:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: animabook_queue_high
-    working_dir: /var/www/animabook
-    volumes:
-      - .:/var/www/animabook
-    env_file:
-      - .env
-    command: ["php", "artisan", "queue:work", "--queue=high", "--sleep=1", "--tries=3", "--timeout=120"]
+    animabook_worker_default:
+        build: .
+        container_name: animabook_worker_default
+        restart: unless-stopped
+        entrypoint: ["/bin/bash", "/var/www/queue-worker.sh", "default"]
+        env_file:
+            - .env
+        environment:
+            APP_ENV: production
+            QUEUE_CONNECTION: database
+            WORKER_SLEEP: 1
+            WORKER_TRIES: 1
+            WORKER_TIMEOUT: 0
+            WORKER_MEMORY: 512
+            WORKER_MAX_JOBS: 1000
+            WORKER_MAX_TIME: 3600
+            DB_HOST: ${WORKER_DB_HOST:-host.docker.internal}
+            DB_PORT: ${WORKER_DB_PORT:-3306}
+        volumes:
+            - ./.env:/var/www/.env.host:ro
+        extra_hosts:
+            - "host.docker.internal:host-gateway"
 
-  queue_default:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: animabook_queue_default
-    working_dir: /var/www/animabook
-    volumes:
-      - .:/var/www/animabook
-    env_file:
-      - .env
-    command: ["php", "artisan", "queue:work", "--queue=default", "--sleep=1", "--tries=3", "--timeout=120"]
+    animabook_worker_high:
+        build: .
+        container_name: animabook_worker_high
+        restart: unless-stopped
+        entrypoint: ["/bin/bash", "/var/www/queue-worker.sh", "high"]
+        env_file:
+            - .env
+        environment:
+            APP_ENV: production
+            QUEUE_CONNECTION: database
+            WORKER_SLEEP: 1
+            WORKER_TRIES: 1
+            WORKER_TIMEOUT: 0
+            WORKER_MEMORY: 512
+            WORKER_MAX_JOBS: 1000
+            WORKER_MAX_TIME: 3600
+            DB_HOST: ${WORKER_DB_HOST:-host.docker.internal}
+            DB_PORT: ${WORKER_DB_PORT:-3306}
+        volumes:
+            - ./.env:/var/www/.env.host:ro
+        extra_hosts:
+            - "host.docker.internal:host-gateway"
 
-  queue_low:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: animabook_queue_low
-    working_dir: /var/www/animabook
-    volumes:
-      - .:/var/www/animabook
-    env_file:
-      - .env
-    command: ["php", "artisan", "queue:work", "--queue=low", "--sleep=2", "--tries=3", "--timeout=120"]
+    animabook_worker_low:
+        build: .
+        container_name: animabook_worker_low
+        restart: unless-stopped
+        entrypoint: ["/bin/bash", "/var/www/queue-worker.sh", "low"]
+        env_file:
+            - .env
+        environment:
+            APP_ENV: production
+            QUEUE_CONNECTION: database
+            WORKER_SLEEP: 1
+            WORKER_TRIES: 1
+            WORKER_TIMEOUT: 0
+            WORKER_MEMORY: 512
+            WORKER_MAX_JOBS: 1000
+            WORKER_MAX_TIME: 3600
+            DB_HOST: ${WORKER_DB_HOST:-host.docker.internal}
+            DB_PORT: ${WORKER_DB_PORT:-3306}
+        volumes:
+            - ./.env:/var/www/.env.host:ro
+        extra_hosts:
+            - "host.docker.internal:host-gateway"
+
+    animabook_scheduler:
+        build: .
+        container_name: animabook_scheduler
+        restart: unless-stopped
+        entrypoint: ["/bin/bash", "/var/www/queue-scheduler.sh"]
+        env_file:
+            - .env
+        environment:
+            APP_ENV: production
+            QUEUE_CONNECTION: database
+            DB_HOST: ${WORKER_DB_HOST:-host.docker.internal}
+            DB_PORT: ${WORKER_DB_PORT:-3306}
+        volumes:
+            - ./.env:/var/www/.env.host:ro
+        extra_hosts:
+            - "host.docker.internal:host-gateway"

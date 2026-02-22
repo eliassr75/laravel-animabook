@@ -1,17 +1,40 @@
-FROM php:8.4-cli
+FROM php:8.4-apache
 
-RUN apt-get update \
-    && apt-get install -y git unzip libzip-dev \
-    && docker-php-ext-install pdo_mysql zip \
-    && rm -rf /var/lib/apt/lists/*
+# Instala dependências do sistema
+RUN apt-get update && apt-get install -y \
+    libicu-dev \
+    libpq-dev \
+    libzip-dev \
+    unzip \
+    git \
+    vim \
+    supervisor \
+    && docker-php-ext-install intl pdo pdo_mysql pdo_pgsql zip
 
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# Instala extensões adicionais que precisar
+# Habilita mod_rewrite
+RUN a2enmod rewrite
 
-WORKDIR /var/www/animabook
+# Copia código
+COPY . /var/www
 
-COPY composer.json composer.lock ./
-RUN composer install --no-interaction --prefer-dist --optimize-autoloader
+# Define workdir
+WORKDIR /var/www
 
-COPY . .
+# Instala composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-CMD ["php", "-v"]
+RUN composer install --optimize-autoloader --no-dev
+
+# Permissões
+RUN chown -R root:www-data /var/www;
+RUN find . -type f -exec chmod 777 {} \;
+RUN find . -type d -exec chmod 777 {} \;
+
+## Expor porta
+#EXPOSE 80
+
+# Entrypoint opcional
+RUN chmod +x /var/www/queue-worker.sh /var/www/queue-scheduler.sh
+
+ENTRYPOINT ["/var/www/queue-worker.sh"]
