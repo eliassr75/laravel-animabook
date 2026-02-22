@@ -109,8 +109,16 @@ return [
         'GITHUB_*',
         'DO_SPACES_*',
         '*_SECRET',
+        'ASSET_URL',
+        'DB_CONNECTION',
+        'DB_URL',
+        'DB_HOST',
+        'DB_PORT',
+        'DB_DATABASE',
+        'DB_SOCKET',
         'DB_PASSWORD',
         'DB_USERNAME',
+        'TELESCOPE_ENABLED',
     ],
 
     /*

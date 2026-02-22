@@ -16,13 +16,13 @@ export default defineConfig({
             refresh: true,
             hotFile: nativephpHotFile(),
         }),
+        nativephpMobile(),
         react({
             babel: {
                 plugins: ['babel-plugin-react-compiler'],
             },
         }),
         tailwindcss(),
-        nativephpMobile(),
         wayfinder({
             formVariants: true,
         }),

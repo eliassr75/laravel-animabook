@@ -30,6 +30,9 @@
         "pestphp/pest-plugin-laravel": "^4.1"
     },
     "autoload": {
+        "files": [
+            "app/Support/polyfills_sentry.php"
+        ],
         "psr-4": {
             "App\\": "app/",
             "Database\\Factories\\": "database/factories/",
