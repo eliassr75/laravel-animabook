@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Gate;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
 class User extends Authenticatable
@@ -69,5 +70,17 @@ class User extends Authenticatable
     public function votes(): HasMany
     {
         return $this->hasMany(UserVote::class);
+    }
+
+    /**
+     * Register the Telescope gate.
+     *
+     * This gate determines who can access Telescope in non-local environments.
+     */
+    protected function gate(): void
+    {
+        Gate::define('viewTelescope', function (User $user) {
+            return $user->email == 'elias.craveiro@animabook.net';
+        });
     }
 }
