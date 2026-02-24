@@ -228,6 +228,12 @@ export default function AnimeDetail({
     { label: "Dropados", value: Number(anime.stats?.dropped ?? 0) },
     { label: "Planejados", value: Number(anime.stats?.plan_to_watch ?? 0) },
   ];
+  const streamingProviders = (anime.streaming ?? [])
+    .filter((item) => Boolean(item.name && item.name.trim() !== ""))
+    .map((item) => ({
+      name: item.name?.trim() ?? "",
+      url: item.url ?? null,
+    }));
 
   const upsertMyReview = (next: { score: number; content: string; isSpoiler?: boolean } | null) => {
     setMyReviewState(next);
@@ -448,6 +454,36 @@ export default function AnimeDetail({
 
           {activeTab === "episodes" && (
             <div className="space-y-3">
+              {streamingProviders.length > 0 ? (
+                <div className="rounded-xl border bg-card p-4">
+                  <h3 className="text-sm font-semibold">Onde assistir este anime</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Plataformas oficiais listadas pelo MyAnimeList/Jikan para este título.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {streamingProviders.map((provider) => (
+                      provider.url ? (
+                        <a
+                          key={`${provider.name}-${provider.url}`}
+                          href={provider.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center rounded-full border px-3 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                        >
+                          {provider.name}
+                        </a>
+                      ) : (
+                        <span
+                          key={provider.name}
+                          className="inline-flex items-center rounded-full border px-3 py-1 text-xs text-muted-foreground"
+                        >
+                          {provider.name}
+                        </span>
+                      )
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3">
                 <Button
                   type="button"
@@ -521,7 +557,7 @@ export default function AnimeDetail({
                           rel="noreferrer"
                           className="mt-2 inline-block text-xs font-medium underline underline-offset-4 hover:text-foreground"
                         >
-                          {episode.videoTitle ? `Vídeo: ${episode.videoTitle}` : "Ver vídeo do episódio"}
+                          {episode.videoTitle ? `Vídeo/página: ${episode.videoTitle}` : "Abrir página/vídeo do episódio"}
                         </a>
                       ) : null}
                     </article>
