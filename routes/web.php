@@ -2,12 +2,11 @@
 
 use App\Http\Controllers\AnimeController;
 use App\Http\Controllers\AnimeEpisodesController;
-use App\Http\Controllers\CharacterController;
-use App\Http\Controllers\App\DashboardController;
-use App\Http\Controllers\App\FavoritesController;
 use App\Http\Controllers\App\AdminSeoController;
 use App\Http\Controllers\App\AdminSitemapController;
 use App\Http\Controllers\App\AdminUsersController;
+use App\Http\Controllers\App\DashboardController;
+use App\Http\Controllers\App\FavoritesController;
 use App\Http\Controllers\App\MediaActionController;
 use App\Http\Controllers\App\MediaEpisodeProgressController;
 use App\Http\Controllers\App\MediaReviewController;
@@ -15,20 +14,27 @@ use App\Http\Controllers\App\MediaScoreController;
 use App\Http\Controllers\App\ProfileController;
 use App\Http\Controllers\App\VoteController;
 use App\Http\Controllers\App\WatchlistController;
+use App\Http\Controllers\CharacterController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\MangaController;
 use App\Http\Controllers\NewsController;
 use App\Http\Controllers\PeopleController;
-use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\Public\CatalogController;
 use App\Http\Controllers\Public\RandomController;
 use App\Http\Controllers\Public\SeasonsController;
-use App\Http\Controllers\Public\StubController;
 use App\Http\Controllers\Public\TopController;
+use App\Http\Controllers\SitemapController;
 use App\Services\UserMediaActionsService;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+
 Route::get('/', HomeController::class)->name('home');
+
+Route::prefix('artisan')->group(function () {
+    Route::get('cache:clear', fn () => Artisan::call('cache:clear'));
+    Route::get('optimize:clear', fn () => Artisan::call('optimize:clear'));
+    Route::get('optimize', fn () => Artisan::call('optimize'));
+});
 
 Route::get('anime', [AnimeController::class, 'index']);
 Route::get('anime/{malId}', [AnimeController::class, 'show']);

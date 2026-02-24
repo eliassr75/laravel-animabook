@@ -114,6 +114,14 @@ class WatchlistController extends Controller
                     'userScore' => $status->user_score,
                     'mediaType' => $status->media_type,
                     'watchedEpisodes' => $watchedEpisodes,
+                    'streaming' => collect(data_get($entity->payload_full, 'streaming', []))
+                        ->map(fn ($item) => [
+                            'name' => is_array($item) ? ($item['name'] ?? null) : null,
+                            'url' => is_array($item) ? ($item['url'] ?? null) : null,
+                        ])
+                        ->filter(fn ($item) => ! empty($item['name']))
+                        ->values()
+                        ->all(),
                 ];
             })
             ->filter()

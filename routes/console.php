@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\BackfillAnimeCatalogJob;
 use App\Jobs\RefreshPlannerJob;
 use App\Jobs\SeedClubsJob;
 use App\Jobs\SeedDiscoveryJob;
@@ -12,6 +13,7 @@ use App\Jobs\SeedTopJob;
 use App\Jobs\SeedWatchJob;
 use App\Jobs\SyncEntityJob;
 use App\Models\CatalogEntity;
+use App\Models\IngestCursor;
 use App\Services\SitemapService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -34,6 +36,92 @@ Artisan::command('catalog:seed-initial', function () {
 
     $this->info('Seed jobs dispatched.');
 })->purpose('Dispatch initial catalog seed jobs');
+
+Artisan::command('catalog:backfill-anime:start {--from=} {--batch=} {--cursor=anime_backfill}', function () {
+    $cursorName = (string) ($this->option('cursor') ?? 'anime_backfill');
+    $from = (int) ($this->option('from') ?? 0);
+    $batch = (int) ($this->option('batch') ?? 0);
+    $batch = $batch > 0
+        ? $batch
+        : (int) config('animabook.backfill_anime.batch_size', 50);
+    $batch = max(1, min(500, $batch));
+
+    $cursor = IngestCursor::query()->firstOrCreate(
+        ['name' => $cursorName],
+        [
+            'next_mal_id' => max(1, (int) config('animabook.backfill_anime.start_mal_id', 1)),
+            'last_valid_mal_id' => null,
+            'consecutive_misses' => 0,
+            'is_active' => false,
+            'meta' => [],
+        ],
+    );
+
+    if ($from > 0) {
+        $cursor->next_mal_id = max(1, $from);
+        $cursor->consecutive_misses = 0;
+    }
+
+    $cursor->is_active = true;
+    $cursor->meta = array_merge($cursor->meta ?? [], [
+        'batch_size' => $batch,
+        'started_at' => now()->toIso8601String(),
+    ]);
+    $cursor->save();
+
+    BackfillAnimeCatalogJob::dispatch($cursorName, $batch)
+        ->onQueue((string) config('animabook.backfill_anime.queue', 'low'));
+
+    $this->info("Backfill anime iniciado: cursor={$cursorName}, next_mal_id={$cursor->next_mal_id}, batch={$batch}.");
+})->purpose('Start or resume continuous anime catalog backfill');
+
+Artisan::command('catalog:backfill-anime:stop {--cursor=anime_backfill}', function () {
+    $cursorName = (string) ($this->option('cursor') ?? 'anime_backfill');
+    $cursor = IngestCursor::query()->where('name', $cursorName)->first();
+
+    if (! $cursor) {
+        $this->warn("Cursor {$cursorName} não encontrado.");
+        return;
+    }
+
+    $cursor->is_active = false;
+    $cursor->save();
+
+    $this->info("Backfill anime pausado: cursor={$cursorName}.");
+})->purpose('Stop continuous anime catalog backfill');
+
+Artisan::command('catalog:backfill-anime:status {--cursor=anime_backfill}', function () {
+    $cursorName = (string) ($this->option('cursor') ?? 'anime_backfill');
+    $cursor = IngestCursor::query()->where('name', $cursorName)->first();
+
+    if (! $cursor) {
+        $this->warn("Cursor {$cursorName} não encontrado.");
+        return;
+    }
+
+    $this->line("cursor: {$cursor->name}");
+    $this->line('is_active: '.($cursor->is_active ? 'yes' : 'no'));
+    $this->line('next_mal_id: '.(int) $cursor->next_mal_id);
+    $this->line('last_valid_mal_id: '.($cursor->last_valid_mal_id ? (int) $cursor->last_valid_mal_id : '-'));
+    $this->line('consecutive_misses: '.(int) $cursor->consecutive_misses);
+    $this->line('last_ran_at: '.($cursor->last_ran_at?->toIso8601String() ?? '-'));
+    $this->line('last_error: '.($cursor->last_error ?? '-'));
+})->purpose('Show anime backfill cursor status');
+
+Artisan::command('catalog:backfill-anime:tick', function () {
+    $queue = (string) config('animabook.backfill_anime.queue', 'low');
+    $defaultBatch = max(1, min(500, (int) config('animabook.backfill_anime.batch_size', 50)));
+
+    IngestCursor::query()
+        ->where('is_active', true)
+        ->get()
+        ->each(function (IngestCursor $cursor) use ($queue, $defaultBatch): void {
+            $batchFromMeta = (int) data_get($cursor->meta, 'batch_size', $defaultBatch);
+            $batch = max(1, min(500, $batchFromMeta));
+
+            BackfillAnimeCatalogJob::dispatch($cursor->name, $batch)->onQueue($queue);
+        });
+})->purpose('Keep active anime backfill cursors running');
 
 Artisan::command('catalog:refresh-anime-full {--limit=} {--from=} {--queue=default}', function () {
     $limit = (int) ($this->option('limit') ?? 0);
@@ -108,4 +196,5 @@ Schedule::job(new SeedMagazinesJob)->weekly()->at('05:30');
 Schedule::job(new SeedClubsJob)->weekly()->at('06:00');
 Schedule::job(new SeedWatchJob)->dailyAt('06:30');
 Schedule::job(new SeedPeopleFromRelationsJob)->dailyAt('02:30');
+Schedule::command('catalog:backfill-anime:tick')->everyMinute();
 Schedule::command('seo:sitemap:refresh --write-file')->everyThirtyMinutes();

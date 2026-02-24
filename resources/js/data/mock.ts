@@ -17,6 +17,7 @@ export interface AnimeItem {
   rank: number;
   colorIndex: number;
   imageUrl?: string | null;
+  streaming?: { name?: string | null; url?: string | null }[];
   userActions?: {
     favorite: boolean;
     status: "assistindo" | "completo" | "dropado" | null;
