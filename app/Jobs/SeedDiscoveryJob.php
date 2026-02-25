@@ -38,46 +38,83 @@ class SeedDiscoveryJob implements ShouldQueue
         $queries = ['a', 'b', 'c'];
 
         foreach ($queries as $query) {
-            $results = $searchEndpoint->anime($query, 1);
-
-            foreach ($results as $item) {
-                if (! isset($item['mal_id'])) {
+            foreach ($searchEndpoint->anime($query, 1) as $item) {
+                $malId = (int) ($item['mal_id'] ?? 0);
+                if ($malId <= 0) {
                     continue;
                 }
 
-                SyncEntityJob::dispatch('anime', (int) $item['mal_id'])->onQueue('low');
+                SyncEntityJob::dispatch('anime', $malId)->onQueue('low');
+            }
+
+            foreach ($searchEndpoint->manga($query, 1) as $item) {
+                $malId = (int) ($item['mal_id'] ?? 0);
+                if ($malId <= 0) {
+                    continue;
+                }
+
+                SyncEntityJob::dispatch('manga', $malId)->onQueue('low');
             }
         }
 
-        $recommendations = $recommendationsEndpoint->anime(1);
-
-        foreach ($recommendations as $rec) {
+        foreach ($recommendationsEndpoint->anime(1) as $rec) {
             $entry = $rec['entry'] ?? null;
-            if (! $entry) {
+            if (! is_array($entry)) {
                 continue;
             }
 
             foreach ($entry as $item) {
-                if (! isset($item['mal_id'])) {
+                $malId = (int) ($item['mal_id'] ?? 0);
+                if ($malId <= 0) {
                     continue;
                 }
 
-                SyncEntityJob::dispatch('anime', (int) $item['mal_id'])->onQueue('low');
+                SyncEntityJob::dispatch('anime', $malId)->onQueue('low');
             }
 
-            if (isset($rec['mal_id'])) {
-                SyncEntityJob::dispatch('anime', (int) $rec['mal_id'])->onQueue('low');
+            $malId = (int) ($rec['mal_id'] ?? 0);
+            if ($malId > 0) {
+                SyncEntityJob::dispatch('anime', $malId)->onQueue('low');
             }
         }
 
-        $reviews = $reviewsEndpoint->anime(1);
-
-        foreach ($reviews as $review) {
-            if (! isset($review['anime']['mal_id'])) {
+        foreach ($recommendationsEndpoint->manga(1) as $rec) {
+            $entry = $rec['entry'] ?? null;
+            if (! is_array($entry)) {
                 continue;
             }
 
-            SyncEntityJob::dispatch('anime', (int) $review['anime']['mal_id'])->onQueue('low');
+            foreach ($entry as $item) {
+                $malId = (int) ($item['mal_id'] ?? 0);
+                if ($malId <= 0) {
+                    continue;
+                }
+
+                SyncEntityJob::dispatch('manga', $malId)->onQueue('low');
+            }
+
+            $malId = (int) ($rec['mal_id'] ?? 0);
+            if ($malId > 0) {
+                SyncEntityJob::dispatch('manga', $malId)->onQueue('low');
+            }
+        }
+
+        foreach ($reviewsEndpoint->anime(1) as $review) {
+            $malId = (int) data_get($review, 'anime.mal_id', 0);
+            if ($malId <= 0) {
+                continue;
+            }
+
+            SyncEntityJob::dispatch('anime', $malId)->onQueue('low');
+        }
+
+        foreach ($reviewsEndpoint->manga(1) as $review) {
+            $malId = (int) data_get($review, 'manga.mal_id', 0);
+            if ($malId <= 0) {
+                continue;
+            }
+
+            SyncEntityJob::dispatch('manga', $malId)->onQueue('low');
         }
     }
 }

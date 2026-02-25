@@ -28,23 +28,44 @@ class SeedTopJob implements ShouldQueue
             return;
         }
 
-        $top = $topEndpoint->anime(1);
-        $topManga = $topEndpoint->manga(1);
+        $animePages = max(1, (int) config('animabook.seed_top.anime_pages', 1));
+        $mangaPages = max(1, (int) config('animabook.seed_top.manga_pages', 5));
 
-        foreach ($top as $item) {
-            if (! isset($item['mal_id'])) {
-                continue;
+        $seenAnime = [];
+        $seenManga = [];
+
+        for ($page = 1; $page <= $animePages; $page++) {
+            $top = $topEndpoint->anime($page);
+            if ($top === []) {
+                break;
             }
 
-            SyncEntityJob::dispatch('anime', (int) $item['mal_id'])->onQueue('high');
+            foreach ($top as $item) {
+                $malId = (int) ($item['mal_id'] ?? 0);
+                if ($malId <= 0 || isset($seenAnime[$malId])) {
+                    continue;
+                }
+
+                $seenAnime[$malId] = true;
+                SyncEntityJob::dispatch('anime', $malId)->onQueue('high');
+            }
         }
 
-        foreach ($topManga as $item) {
-            if (! isset($item['mal_id'])) {
-                continue;
+        for ($page = 1; $page <= $mangaPages; $page++) {
+            $topManga = $topEndpoint->manga($page);
+            if ($topManga === []) {
+                break;
             }
 
-            SyncEntityJob::dispatch('manga', (int) $item['mal_id'])->onQueue('high');
+            foreach ($topManga as $item) {
+                $malId = (int) ($item['mal_id'] ?? 0);
+                if ($malId <= 0 || isset($seenManga[$malId])) {
+                    continue;
+                }
+
+                $seenManga[$malId] = true;
+                SyncEntityJob::dispatch('manga', $malId)->onQueue('high');
+            }
         }
     }
 }

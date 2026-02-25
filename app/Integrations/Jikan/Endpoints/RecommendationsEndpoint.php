@@ -12,4 +12,13 @@ class RecommendationsEndpoint extends BaseEndpoint
 
         return $response->json('data') ?? [];
     }
+
+    public function manga(int $page = 1): array
+    {
+        $response = $this->client->get('recommendations/manga', [
+            'page' => $page,
+        ]);
+
+        return $response->json('data') ?? [];
+    }
 }

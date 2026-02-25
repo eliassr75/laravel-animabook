@@ -13,4 +13,14 @@ class SearchEndpoint extends BaseEndpoint
 
         return $response->json('data') ?? [];
     }
+
+    public function manga(string $query, int $page = 1): array
+    {
+        $response = $this->client->get('manga', [
+            'q' => $query,
+            'page' => $page,
+        ]);
+
+        return $response->json('data') ?? [];
+    }
 }

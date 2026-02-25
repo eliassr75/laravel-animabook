@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\BackfillAnimeCatalogJob;
+use App\Jobs\BackfillMangaCatalogJob;
 use App\Jobs\RefreshPlannerJob;
 use App\Jobs\SeedClubsJob;
 use App\Jobs\SeedDiscoveryJob;
@@ -66,6 +67,7 @@ Artisan::command('catalog:backfill-anime:start {--from=} {--batch=} {--cursor=an
     $cursor->meta = array_merge($cursor->meta ?? [], [
         'batch_size' => $batch,
         'started_at' => now()->toIso8601String(),
+        'family' => 'anime_backfill',
     ]);
     $cursor->save();
 
@@ -115,6 +117,13 @@ Artisan::command('catalog:backfill-anime:tick', function () {
     IngestCursor::query()
         ->where('is_active', true)
         ->get()
+        ->filter(function (IngestCursor $cursor): bool {
+            if (data_get($cursor->meta, 'family') === 'anime_backfill') {
+                return true;
+            }
+
+            return $cursor->name === 'anime_backfill' || str_starts_with($cursor->name, 'anime_backfill:');
+        })
         ->each(function (IngestCursor $cursor) use ($queue, $defaultBatch): void {
             $batchFromMeta = (int) data_get($cursor->meta, 'batch_size', $defaultBatch);
             $batch = max(1, min(500, $batchFromMeta));
@@ -122,6 +131,100 @@ Artisan::command('catalog:backfill-anime:tick', function () {
             BackfillAnimeCatalogJob::dispatch($cursor->name, $batch)->onQueue($queue);
         });
 })->purpose('Keep active anime backfill cursors running');
+
+Artisan::command('catalog:backfill-manga:start {--from=} {--batch=} {--cursor=manga_backfill}', function () {
+    $cursorName = (string) ($this->option('cursor') ?? 'manga_backfill');
+    $from = (int) ($this->option('from') ?? 0);
+    $batch = (int) ($this->option('batch') ?? 0);
+    $batch = $batch > 0
+        ? $batch
+        : (int) config('animabook.backfill_manga.batch_size', 50);
+    $batch = max(1, min(500, $batch));
+
+    $cursor = IngestCursor::query()->firstOrCreate(
+        ['name' => $cursorName],
+        [
+            'next_mal_id' => max(1, (int) config('animabook.backfill_manga.start_mal_id', 1)),
+            'last_valid_mal_id' => null,
+            'consecutive_misses' => 0,
+            'is_active' => false,
+            'meta' => [],
+        ],
+    );
+
+    if ($from > 0) {
+        $cursor->next_mal_id = max(1, $from);
+        $cursor->consecutive_misses = 0;
+    }
+
+    $cursor->is_active = true;
+    $cursor->meta = array_merge($cursor->meta ?? [], [
+        'batch_size' => $batch,
+        'started_at' => now()->toIso8601String(),
+        'family' => 'manga_backfill',
+    ]);
+    $cursor->save();
+
+    BackfillMangaCatalogJob::dispatch($cursorName, $batch)
+        ->onQueue((string) config('animabook.backfill_manga.queue', 'low'));
+
+    $this->info("Backfill mangá iniciado: cursor={$cursorName}, next_mal_id={$cursor->next_mal_id}, batch={$batch}.");
+})->purpose('Start or resume continuous manga catalog backfill');
+
+Artisan::command('catalog:backfill-manga:stop {--cursor=manga_backfill}', function () {
+    $cursorName = (string) ($this->option('cursor') ?? 'manga_backfill');
+    $cursor = IngestCursor::query()->where('name', $cursorName)->first();
+
+    if (! $cursor) {
+        $this->warn("Cursor {$cursorName} não encontrado.");
+        return;
+    }
+
+    $cursor->is_active = false;
+    $cursor->save();
+
+    $this->info("Backfill mangá pausado: cursor={$cursorName}.");
+})->purpose('Stop continuous manga backfill');
+
+Artisan::command('catalog:backfill-manga:status {--cursor=manga_backfill}', function () {
+    $cursorName = (string) ($this->option('cursor') ?? 'manga_backfill');
+    $cursor = IngestCursor::query()->where('name', $cursorName)->first();
+
+    if (! $cursor) {
+        $this->warn("Cursor {$cursorName} não encontrado.");
+        return;
+    }
+
+    $this->line("cursor: {$cursor->name}");
+    $this->line('is_active: '.($cursor->is_active ? 'yes' : 'no'));
+    $this->line('next_mal_id: '.(int) $cursor->next_mal_id);
+    $this->line('last_valid_mal_id: '.($cursor->last_valid_mal_id ? (int) $cursor->last_valid_mal_id : '-'));
+    $this->line('consecutive_misses: '.(int) $cursor->consecutive_misses);
+    $this->line('last_ran_at: '.($cursor->last_ran_at?->toIso8601String() ?? '-'));
+    $this->line('last_error: '.($cursor->last_error ?? '-'));
+})->purpose('Show manga backfill cursor status');
+
+Artisan::command('catalog:backfill-manga:tick', function () {
+    $queue = (string) config('animabook.backfill_manga.queue', 'low');
+    $defaultBatch = max(1, min(500, (int) config('animabook.backfill_manga.batch_size', 50)));
+
+    IngestCursor::query()
+        ->where('is_active', true)
+        ->get()
+        ->filter(function (IngestCursor $cursor): bool {
+            if (data_get($cursor->meta, 'family') === 'manga_backfill') {
+                return true;
+            }
+
+            return $cursor->name === 'manga_backfill' || str_starts_with($cursor->name, 'manga_backfill:');
+        })
+        ->each(function (IngestCursor $cursor) use ($queue, $defaultBatch): void {
+            $batchFromMeta = (int) data_get($cursor->meta, 'batch_size', $defaultBatch);
+            $batch = max(1, min(500, $batchFromMeta));
+
+            BackfillMangaCatalogJob::dispatch($cursor->name, $batch)->onQueue($queue);
+        });
+})->purpose('Keep active manga backfill cursors running');
 
 Artisan::command('catalog:refresh-anime-full {--limit=} {--from=} {--queue=default}', function () {
     $limit = (int) ($this->option('limit') ?? 0);
@@ -197,4 +300,5 @@ Schedule::job(new SeedClubsJob)->weekly()->at('06:00');
 Schedule::job(new SeedWatchJob)->dailyAt('06:30');
 Schedule::job(new SeedPeopleFromRelationsJob)->dailyAt('02:30');
 Schedule::command('catalog:backfill-anime:tick')->everyMinute();
+Schedule::command('catalog:backfill-manga:tick')->everyMinute();
 Schedule::command('seo:sitemap:refresh --write-file')->everyThirtyMinutes();

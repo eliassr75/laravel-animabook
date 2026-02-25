@@ -31,9 +31,10 @@ use Inertia\Inertia;
 Route::get('/', HomeController::class)->name('home');
 
 Route::prefix('artisan')->group(function () {
-    Route::get('cache:clear', fn () => Artisan::call('cache:clear'));
-    Route::get('optimize:clear', fn () => Artisan::call('optimize:clear'));
-    Route::get('optimize', fn () => Artisan::call('optimize'));
+    Route::get('/migrate', fn () => Artisan::call('migrate --force'));
+    Route::get('/cache-clear', fn () => Artisan::call('cache:clear --force'));
+    Route::get('/optimize:clear', fn () => Artisan::call('optimize:clear --force'));
+    Route::get('/optimize', fn () => Artisan::call('optimize'));
 });
 
 Route::get('anime', [AnimeController::class, 'index']);
