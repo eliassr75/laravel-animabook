@@ -25,10 +25,33 @@ use App\Http\Controllers\Public\SeasonsController;
 use App\Http\Controllers\Public\TopController;
 use App\Http\Controllers\SitemapController;
 use App\Services\UserMediaActionsService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', HomeController::class)->name('home');
+
+Route::get('/health', function () {
+    try {
+        DB::connection()->getPdo();
+
+        return response()->json([
+            'status' => 'ok',
+            'checks' => [
+                'database' => 'up',
+            ],
+            'timestamp' => now()->toIso8601String(),
+        ]);
+    } catch (\Throwable) {
+        return response()->json([
+            'status' => 'degraded',
+            'checks' => [
+                'database' => 'down',
+            ],
+            'timestamp' => now()->toIso8601String(),
+        ], 503);
+    }
+})->name('health');
 
 Route::prefix('artisan')->group(function () {
     Route::get('/migrate', fn () => Artisan::call('migrate --force'));
