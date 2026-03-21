@@ -23,6 +23,7 @@ class JikanHttpClient
         ?int $lockWaitMs = null,
         ?int $minIntervalMs = null,
         ?int $rateLockTtl = null,
+        ?JikanResponseCache $responseCache = null,
     ) {
         $config = config('jikan');
 
@@ -37,6 +38,7 @@ class JikanHttpClient
         $this->lockWaitMs = $lockWaitMs ?? $config['lock_wait_ms'];
         $this->minIntervalMs = $minIntervalMs ?? $config['min_interval_ms'];
         $this->rateLockTtl = $rateLockTtl ?? $config['rate_lock_ttl'];
+        $this->responseCache = $responseCache ?? app(JikanResponseCache::class);
     }
 
     private string $baseUrl;
@@ -50,12 +52,24 @@ class JikanHttpClient
     private int $lockWaitMs;
     private int $minIntervalMs;
     private int $rateLockTtl;
+    private ?JikanResponseCache $responseCache;
 
     public function get(string $path, array $query = []): Response
     {
+        if ($this->responseCache) {
+            $cachedResponse = $this->responseCache->get($path, $query);
+            if ($cachedResponse) {
+                return $cachedResponse;
+            }
+        }
+
         $request = $this->baseRequest();
 
-        return $this->sendWithRetry(fn () => $request->get($this->url($path), $query), $path, $query);
+        $response = $this->sendWithRetry(fn () => $request->get($this->url($path), $query), $path, $query);
+
+        $this->responseCache?->put($path, $query, $response);
+
+        return $response;
     }
 
     private function baseRequest(): PendingRequest

@@ -67,107 +67,149 @@ class MangaController extends Controller
         }
 
         $relationPayload = collect(data_get($entity->payload_full, 'relations', data_get($entity->payload, 'relations', [])));
-        $relationCatalogMap = $this->relationCatalogMap($relationPayload);
+        $relationCatalogMap = Cache::flexible(
+            "manga:detail:relation-map:v1:{$malId}:".($entity->updated_at?->timestamp ?? 0),
+            [300, 1800],
+            fn (): array => $this->relationCatalogMap($relationPayload),
+            ['seconds' => 15],
+        );
 
-        $recommendationIds = EntityRelation::query()
-            ->where('from_type', 'manga')
-            ->where('from_mal_id', $malId)
-            ->where('relation_type', 'recommendation')
-            ->orderByDesc('weight')
-            ->limit(12)
-            ->pluck('to_mal_id')
-            ->all();
+        $recommendations = collect(Cache::flexible(
+            "manga:detail:recommendations:v1:{$malId}",
+            [120, 600],
+            function () use ($malId): array {
+                $recommendationIds = EntityRelation::query()
+                    ->where('from_type', 'manga')
+                    ->where('from_mal_id', $malId)
+                    ->where('relation_type', 'recommendation')
+                    ->orderByDesc('weight')
+                    ->limit(12)
+                    ->pluck('to_mal_id')
+                    ->all();
 
-        $recommendations = CatalogEntity::query()
-            ->type('manga')
-            ->whereIn('mal_id', $recommendationIds)
-            ->get();
+                if ($recommendationIds === []) {
+                    return [];
+                }
+
+                return CatalogEntity::query()
+                    ->type('manga')
+                    ->whereIn('mal_id', $recommendationIds)
+                    ->get()
+                    ->map(fn (CatalogEntity $item) => $this->present($item))
+                    ->values()
+                    ->all();
+            },
+            ['seconds' => 15],
+        ));
 
         $user = request()->user();
         $recommendationStates = $user
-            ? $actions->statesFor($user, 'manga', $recommendations->pluck('mal_id')->all())
+            ? $actions->statesFor($user, 'manga', $recommendations->pluck('malId')->map(fn ($id) => (int) $id)->all())
             : [];
 
         $recommendations = $recommendations
-            ->map(fn (CatalogEntity $item) => $this->present($item, $recommendationStates[$item->mal_id] ?? null))
+            ->map(function (array $item) use ($recommendationStates) {
+                $malId = (int) ($item['malId'] ?? 0);
+                $item['userActions'] = $recommendationStates[$malId] ?? null;
+
+                return $item;
+            })
             ->values();
 
-        $payloadCharacters = data_get($entity->payload_full, 'characters', []);
-        if (is_array($payloadCharacters) && count($payloadCharacters) > 0) {
-            $characters = collect($payloadCharacters)
-                ->take(12)
-                ->map(function (array $character) {
-                    $entry = $character['character'] ?? [];
-                    $imageUrl = data_get($entry, 'images.jpg.image_url')
-                        ?? data_get($entry, 'images.jpg.small_image_url')
-                        ?? data_get($entry, 'images.webp.image_url')
-                        ?? data_get($entry, 'images.webp.small_image_url')
-                        ?? data_get($entry, 'image_url');
+        $characters = collect(Cache::flexible(
+            "manga:detail:characters:v1:{$malId}:".($entity->updated_at?->timestamp ?? 0),
+            [120, 600],
+            function () use ($entity, $malId): array {
+                $payloadCharacters = data_get($entity->payload_full, 'characters', []);
+                if (is_array($payloadCharacters) && count($payloadCharacters) > 0) {
+                    return collect($payloadCharacters)
+                        ->take(12)
+                        ->map(function (array $character) {
+                            $entry = $character['character'] ?? [];
+                            $imageUrl = data_get($entry, 'images.jpg.image_url')
+                                ?? data_get($entry, 'images.jpg.small_image_url')
+                                ?? data_get($entry, 'images.webp.image_url')
+                                ?? data_get($entry, 'images.webp.small_image_url')
+                                ?? data_get($entry, 'image_url');
+
+                            return [
+                                'malId' => (int) ($entry['mal_id'] ?? 0),
+                                'name' => $entry['name'] ?? '—',
+                                'role' => $character['role'] ?? '—',
+                                'mangaName' => '—',
+                                'colorIndex' => ((int) ($entry['mal_id'] ?? 0)) % 6,
+                                'imageUrl' => $imageUrl,
+                            ];
+                        })
+                        ->values()
+                        ->all();
+                }
+
+                $characterRelations = EntityRelation::query()
+                    ->where('from_type', 'manga')
+                    ->where('from_mal_id', $malId)
+                    ->where('relation_type', 'character')
+                    ->limit(12)
+                    ->get();
+
+                $characterEntities = CatalogEntity::query()
+                    ->type('character')
+                    ->whereIn('mal_id', $characterRelations->pluck('to_mal_id'))
+                    ->get()
+                    ->keyBy('mal_id');
+
+                return $characterRelations->map(function (EntityRelation $relation) use ($characterEntities) {
+                    $entity = $characterEntities->get($relation->to_mal_id);
+                    $role = $relation->meta['role'] ?? null;
+                    $imageUrl = $entity?->imageUrl()
+                        ?? data_get($relation->meta, 'character.images.jpg.image_url')
+                        ?? data_get($relation->meta, 'character.images.webp.image_url')
+                        ?? data_get($relation->meta, 'character.image_url');
 
                     return [
-                        'malId' => (int) ($entry['mal_id'] ?? 0),
-                        'name' => $entry['name'] ?? '—',
-                        'role' => $character['role'] ?? '—',
+                        'malId' => $relation->to_mal_id,
+                        'name' => $entity?->title ?? ($relation->meta['character']['name'] ?? '—'),
+                        'role' => $role ?? ($relation->meta['role'] ?? '—'),
                         'mangaName' => '—',
-                        'colorIndex' => ((int) ($entry['mal_id'] ?? 0)) % 6,
+                        'colorIndex' => $relation->to_mal_id % 6,
                         'imageUrl' => $imageUrl,
                     ];
-                })
-                ->values();
-        } else {
-            $characterRelations = EntityRelation::query()
-                ->where('from_type', 'manga')
-                ->where('from_mal_id', $malId)
-                ->where('relation_type', 'character')
-                ->limit(12)
-                ->get();
+                })->values()->all();
+            },
+            ['seconds' => 15],
+        ));
 
-            $characterEntities = CatalogEntity::query()
-                ->type('character')
-                ->whereIn('mal_id', $characterRelations->pluck('to_mal_id'))
-                ->get()
-                ->keyBy('mal_id');
+        $externalReviews = collect(Cache::flexible(
+            "manga:detail:external-reviews:v1:{$malId}",
+            [120, 600],
+            function () use ($malId): array {
+                return EntityRelation::query()
+                    ->where('from_type', 'manga')
+                    ->where('from_mal_id', $malId)
+                    ->where('relation_type', 'review')
+                    ->orderByDesc('weight')
+                    ->limit(8)
+                    ->get()
+                    ->map(function (EntityRelation $relation) {
+                        $meta = $relation->meta ?? [];
 
-            $characters = $characterRelations->map(function (EntityRelation $relation) use ($characterEntities) {
-                $entity = $characterEntities->get($relation->to_mal_id);
-                $role = $relation->meta['role'] ?? null;
-                $imageUrl = $entity?->imageUrl()
-                    ?? data_get($relation->meta, 'character.images.jpg.image_url')
-                    ?? data_get($relation->meta, 'character.images.webp.image_url')
-                    ?? data_get($relation->meta, 'character.image_url');
-
-                return [
-                    'malId' => $relation->to_mal_id,
-                    'name' => $entity?->title ?? ($relation->meta['character']['name'] ?? '—'),
-                    'role' => $role ?? ($relation->meta['role'] ?? '—'),
-                    'mangaName' => '—',
-                    'colorIndex' => $relation->to_mal_id % 6,
-                    'imageUrl' => $imageUrl,
-                ];
-            })->values();
-        }
-
-        $externalReviews = EntityRelation::query()
-            ->where('from_type', 'manga')
-            ->where('from_mal_id', $malId)
-            ->where('relation_type', 'review')
-            ->orderByDesc('weight')
-            ->limit(8)
-            ->get()
-            ->map(function (EntityRelation $relation) {
-                $meta = $relation->meta ?? [];
-                return [
-                    'id' => $relation->to_mal_id,
-                    'user' => data_get($meta, 'user.username', 'Usuário'),
-                    'mangaTitle' => data_get($meta, 'manga.title', '—'),
-                    'mangaMalId' => data_get($meta, 'manga.mal_id', 0),
-                    'score' => (float) (data_get($meta, 'score', 0)),
-                    'content' => data_get($meta, 'review', ''),
-                    'date' => data_get($meta, 'date', ''),
-                    'isMine' => false,
-                    'mediaType' => 'manga',
-                ];
-            });
+                        return [
+                            'id' => $relation->to_mal_id,
+                            'user' => data_get($meta, 'user.username', 'Usuário'),
+                            'mangaTitle' => data_get($meta, 'manga.title', '—'),
+                            'mangaMalId' => data_get($meta, 'manga.mal_id', 0),
+                            'score' => (float) (data_get($meta, 'score', 0)),
+                            'content' => data_get($meta, 'review', ''),
+                            'date' => data_get($meta, 'date', ''),
+                            'isMine' => false,
+                            'mediaType' => 'manga',
+                        ];
+                    })
+                    ->values()
+                    ->all();
+            },
+            ['seconds' => 15],
+        ));
 
         $userReviews = UserReview::query()
             ->with('user:id,name')
@@ -201,17 +243,22 @@ class MangaController extends Controller
                 ->first()
             : null;
 
-        $news = $this->mergeNews(
-            data_get($entity->payload_full, 'news', []),
-            EntityRelation::query()
-                ->where('from_type', 'manga')
-                ->where('from_mal_id', $malId)
-                ->where('relation_type', 'news')
-                ->orderByDesc('created_at')
-                ->limit(20)
-                ->get()
-                ->pluck('meta')
-                ->all(),
+        $news = Cache::flexible(
+            "manga:detail:news:v1:{$malId}:".($entity->updated_at?->timestamp ?? 0),
+            [120, 600],
+            fn (): array => $this->mergeNews(
+                data_get($entity->payload_full, 'news', []),
+                EntityRelation::query()
+                    ->where('from_type', 'manga')
+                    ->where('from_mal_id', $malId)
+                    ->where('relation_type', 'news')
+                    ->orderByDesc('created_at')
+                    ->limit(20)
+                    ->get()
+                    ->pluck('meta')
+                    ->all(),
+            ),
+            ['seconds' => 15],
         );
 
         return Inertia::render('MangaDetail', [
@@ -248,7 +295,7 @@ class MangaController extends Controller
                     ->values()
                     ->all(),
             ]),
-            'recommendations' => $recommendations,
+            'recommendations' => $recommendations->all(),
             'reviews' => $reviews,
             'myReview' => $myReview ? [
                 'score' => (float) $myReview->score,
@@ -256,7 +303,7 @@ class MangaController extends Controller
                 'isSpoiler' => (bool) $myReview->is_spoiler,
             ] : null,
             'news' => $news,
-            'characters' => $characters,
+            'characters' => $characters->all(),
         ]);
     }
 

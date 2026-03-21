@@ -20,44 +20,83 @@ class HomeController extends Controller
         $season = $this->seasonForMonth((int) $now->format('n'));
         $seasonAliases = $this->seasonAliases($season);
 
-        $topAnime = CatalogEntity::query()
-            ->type('anime')
-            ->where('rank', '>=', 1)
-            ->orderBy('rank')
-            ->limit(6)
-            ->get();
+        $publicPayload = Cache::flexible(
+            "home:landing:v1:{$now->format('Y')}:{$season}",
+            [60, 300],
+            function () use ($now, $seasonAliases): array {
+                $topAnime = CatalogEntity::query()
+                    ->type('anime')
+                    ->where('rank', '>=', 1)
+                    ->orderBy('rank')
+                    ->limit(6)
+                    ->get()
+                    ->map(fn (CatalogEntity $entity) => $this->present($entity))
+                    ->values()
+                    ->all();
 
-        $currentSeason = CatalogEntity::query()
-            ->type('anime')
-            ->where('year', (int) $now->format('Y'))
-            ->whereIn(DB::raw('LOWER(season)'), $seasonAliases)
-            ->limit(6)
-            ->get();
+                $currentSeason = CatalogEntity::query()
+                    ->type('anime')
+                    ->where('year', (int) $now->format('Y'))
+                    ->whereIn(DB::raw('LOWER(season)'), $seasonAliases)
+                    ->limit(6)
+                    ->get()
+                    ->map(fn (CatalogEntity $entity) => $this->present($entity))
+                    ->values()
+                    ->all();
 
-        $recommendations = CatalogEntity::query()
-            ->type('anime')
-            ->orderByDesc('score')
-            ->skip(4)
-            ->limit(6)
-            ->get();
+                $recommendations = CatalogEntity::query()
+                    ->type('anime')
+                    ->orderByDesc('score')
+                    ->skip(4)
+                    ->limit(6)
+                    ->get()
+                    ->map(fn (CatalogEntity $entity) => $this->present($entity))
+                    ->values()
+                    ->all();
+
+                return [
+                    'topAnime' => $topAnime,
+                    'currentSeason' => $currentSeason,
+                    'recommendations' => $recommendations,
+                    'recentReviews' => $this->recentReviews(),
+                    'recentNews' => $this->recentNews(),
+                    'baseStats' => $this->baseStats(),
+                ];
+            },
+            ['seconds' => 15],
+        );
 
         $user = request()->user();
-        $allIds = $topAnime->pluck('mal_id')
-            ->merge($currentSeason->pluck('mal_id'))
-            ->merge($recommendations->pluck('mal_id'))
+        $allIds = collect($publicPayload['topAnime'] ?? [])
+            ->pluck('malId')
+            ->merge(collect($publicPayload['currentSeason'] ?? [])->pluck('malId'))
+            ->merge(collect($publicPayload['recommendations'] ?? [])->pluck('malId'))
             ->unique()
             ->values()
             ->all();
         $actionStates = $user ? $actions->statesFor($user, 'anime', $allIds) : [];
 
         return Inertia::render('Index', [
-            'topAnime' => $topAnime->map(fn (CatalogEntity $entity) => $this->present($entity, $actionStates[$entity->mal_id] ?? null)),
-            'currentSeason' => $currentSeason->map(fn (CatalogEntity $entity) => $this->present($entity, $actionStates[$entity->mal_id] ?? null)),
-            'recommendations' => $recommendations->map(fn (CatalogEntity $entity) => $this->present($entity, $actionStates[$entity->mal_id] ?? null)),
-            'recentReviews' => $this->recentReviews(),
-            'recentNews' => $this->recentNews(),
-            'baseStats' => $this->baseStats(),
+            'topAnime' => $this->withActionStates($publicPayload['topAnime'] ?? [], $actionStates),
+            'currentSeason' => $this->withActionStates($publicPayload['currentSeason'] ?? [], $actionStates),
+            'recommendations' => $this->withActionStates($publicPayload['recommendations'] ?? [], $actionStates),
+            'recentReviews' => $publicPayload['recentReviews'] ?? [],
+            'recentNews' => $publicPayload['recentNews'] ?? [],
+            'baseStats' => $publicPayload['baseStats'] ?? $this->baseStats(),
         ]);
+    }
+
+    private function withActionStates(array $items, array $actionStates): array
+    {
+        return collect($items)
+            ->map(function (array $item) use ($actionStates) {
+                $malId = (int) ($item['malId'] ?? 0);
+                $item['userActions'] = $actionStates[$malId] ?? null;
+
+                return $item;
+            })
+            ->values()
+            ->all();
     }
 
     private function baseStats(): array

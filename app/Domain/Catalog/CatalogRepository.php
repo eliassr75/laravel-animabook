@@ -6,6 +6,7 @@ use App\Models\CatalogEntity;
 use App\Models\EntityRelation;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -22,109 +23,122 @@ class CatalogRepository
 
     public function find(string $entityType, int $malId): ?CatalogEntity
     {
-        return CatalogEntity::query()
-            ->type($entityType)
-            ->where('mal_id', $malId)
-            ->first();
+        return Cache::flexible(
+            "catalog:find:v1:{$entityType}:{$malId}",
+            [60, 300],
+            fn (): ?CatalogEntity => CatalogEntity::query()
+                ->type($entityType)
+                ->where('mal_id', $malId)
+                ->first(),
+            ['seconds' => 10],
+        );
     }
 
     public function filterOptions(string $entityType): array
     {
-        $base = CatalogEntity::query()->type($entityType);
+        return Cache::flexible(
+            "catalog:filter-options:v1:{$entityType}",
+            [300, 1800],
+            function () use ($entityType): array {
+                $base = CatalogEntity::query()->type($entityType);
 
-        $years = (clone $base)
-            ->whereNotNull('year')
-            ->distinct()
-            ->orderByDesc('year')
-            ->pluck('year')
-            ->map(fn ($year) => (int) $year)
-            ->values()
-            ->all();
-
-        $statuses = (clone $base)
-            ->whereNotNull('status')
-            ->distinct()
-            ->orderBy('status')
-            ->pluck('status')
-            ->values()
-            ->all();
-
-        $seasons = (clone $base)
-            ->whereNotNull('season')
-            ->distinct()
-            ->pluck('season')
-            ->values()
-            ->all();
-
-        $seasons = collect($seasons)
-            ->unique(fn ($season) => mb_strtolower((string) $season))
-            ->sort(function ($a, $b) {
-                $order = $this->seasonSortOrder();
-                $keyA = $order[$this->normalizeSeasonFilter((string) $a)] ?? 99;
-                $keyB = $order[$this->normalizeSeasonFilter((string) $b)] ?? 99;
-                if ($keyA === $keyB) {
-                    return strcmp((string) $a, (string) $b);
-                }
-                return $keyA <=> $keyB;
-            })
-            ->values()
-            ->all();
-
-        $types = (clone $base)
-            ->get(['payload'])
-            ->map(fn (CatalogEntity $entity) => data_get($entity->payload, 'type'))
-            ->filter()
-            ->unique()
-            ->sort()
-            ->values()
-            ->all();
-
-        $genres = [];
-        if (in_array($entityType, ['anime', 'manga'], true)) {
-            $genreIds = EntityRelation::query()
-                ->where('from_type', $entityType)
-                ->where('to_type', 'genre')
-                ->where('relation_type', 'genre')
-                ->distinct()
-                ->pluck('to_mal_id');
-
-            if ($genreIds->isNotEmpty()) {
-                $genres = CatalogEntity::query()
-                    ->type('genre')
-                    ->whereIn('mal_id', $genreIds)
-                    ->orderBy('title')
-                    ->get(['mal_id', 'title'])
-                    ->map(fn (CatalogEntity $entity) => [
-                        'id' => $entity->mal_id,
-                        'name' => $entity->title,
-                    ])
+                $years = (clone $base)
+                    ->whereNotNull('year')
+                    ->distinct()
+                    ->orderByDesc('year')
+                    ->pluck('year')
+                    ->map(fn ($year) => (int) $year)
                     ->values()
                     ->all();
-            }
-        }
 
-        return [
-            'years' => $years,
-            'statuses' => $statuses,
-            'seasons' => $seasons,
-            'types' => $types,
-            'genres' => $genres,
-            'syncStatuses' => [
-                ['value' => 'synced', 'label' => 'Sincronizados'],
-                ['value' => 'pending', 'label' => 'Pendentes de sync'],
-            ],
-            'sorts' => [
-                'score',
-                'rank',
-                'popularity',
-                'members',
-                'favorites',
-                'created_at',
-                'updated_at',
-                'title',
-                'year',
-            ],
-        ];
+                $statuses = (clone $base)
+                    ->whereNotNull('status')
+                    ->distinct()
+                    ->orderBy('status')
+                    ->pluck('status')
+                    ->values()
+                    ->all();
+
+                $seasons = (clone $base)
+                    ->whereNotNull('season')
+                    ->distinct()
+                    ->pluck('season')
+                    ->values()
+                    ->all();
+
+                $seasons = collect($seasons)
+                    ->unique(fn ($season) => mb_strtolower((string) $season))
+                    ->sort(function ($a, $b) {
+                        $order = $this->seasonSortOrder();
+                        $keyA = $order[$this->normalizeSeasonFilter((string) $a)] ?? 99;
+                        $keyB = $order[$this->normalizeSeasonFilter((string) $b)] ?? 99;
+                        if ($keyA === $keyB) {
+                            return strcmp((string) $a, (string) $b);
+                        }
+
+                        return $keyA <=> $keyB;
+                    })
+                    ->values()
+                    ->all();
+
+                $types = (clone $base)
+                    ->get(['payload'])
+                    ->map(fn (CatalogEntity $entity) => data_get($entity->payload, 'type'))
+                    ->filter()
+                    ->unique()
+                    ->sort()
+                    ->values()
+                    ->all();
+
+                $genres = [];
+                if (in_array($entityType, ['anime', 'manga'], true)) {
+                    $genreIds = EntityRelation::query()
+                        ->where('from_type', $entityType)
+                        ->where('to_type', 'genre')
+                        ->where('relation_type', 'genre')
+                        ->distinct()
+                        ->pluck('to_mal_id');
+
+                    if ($genreIds->isNotEmpty()) {
+                        $genres = CatalogEntity::query()
+                            ->type('genre')
+                            ->whereIn('mal_id', $genreIds)
+                            ->orderBy('title')
+                            ->get(['mal_id', 'title'])
+                            ->map(fn (CatalogEntity $entity) => [
+                                'id' => $entity->mal_id,
+                                'name' => $entity->title,
+                            ])
+                            ->values()
+                            ->all();
+                    }
+                }
+
+                return [
+                    'years' => $years,
+                    'statuses' => $statuses,
+                    'seasons' => $seasons,
+                    'types' => $types,
+                    'genres' => $genres,
+                    'syncStatuses' => [
+                        ['value' => 'synced', 'label' => 'Sincronizados'],
+                        ['value' => 'pending', 'label' => 'Pendentes de sync'],
+                    ],
+                    'sorts' => [
+                        'score',
+                        'rank',
+                        'popularity',
+                        'members',
+                        'favorites',
+                        'created_at',
+                        'updated_at',
+                        'title',
+                        'year',
+                    ],
+                ];
+            },
+            ['seconds' => 30],
+        );
     }
 
     private function applyFilters(Builder $query, string $entityType, array $filters): void

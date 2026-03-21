@@ -69,21 +69,40 @@ class AnimeController extends Controller
 
         $full = $entity->payload_full ?? [];
         $relationPayload = collect(data_get($full, 'relations', []));
-        $relationCatalogMap = $this->relationCatalogMap($relationPayload);
+        $relationCatalogMap = Cache::flexible(
+            "anime:detail:relation-map:v1:{$malId}:".($entity->updated_at?->timestamp ?? 0),
+            [300, 1800],
+            fn (): array => $this->relationCatalogMap($relationPayload),
+            ['seconds' => 15],
+        );
 
-        $recommendationIds = \App\Models\EntityRelation::query()
-            ->where('from_type', 'anime')
-            ->where('from_mal_id', $malId)
-            ->where('relation_type', 'recommendation')
-            ->orderByDesc('weight')
-            ->limit(12)
-            ->pluck('to_mal_id')
-            ->all();
+        $recommendations = collect(Cache::flexible(
+            "anime:detail:recommendations:v1:{$malId}",
+            [120, 600],
+            function () use ($malId): array {
+                $recommendationIds = EntityRelation::query()
+                    ->where('from_type', 'anime')
+                    ->where('from_mal_id', $malId)
+                    ->where('relation_type', 'recommendation')
+                    ->orderByDesc('weight')
+                    ->limit(12)
+                    ->pluck('to_mal_id')
+                    ->all();
 
-        $recommendations = \App\Models\CatalogEntity::query()
-            ->type('anime')
-            ->whereIn('mal_id', $recommendationIds)
-            ->get();
+                if ($recommendationIds === []) {
+                    return [];
+                }
+
+                return CatalogEntity::query()
+                    ->type('anime')
+                    ->whereIn('mal_id', $recommendationIds)
+                    ->get()
+                    ->map(fn (CatalogEntity $item) => $this->present($item))
+                    ->values()
+                    ->all();
+            },
+            ['seconds' => 15],
+        ));
 
         $user = request()->user();
         $userStatus = $user
@@ -94,77 +113,99 @@ class AnimeController extends Controller
                 ->first()
             : null;
         $recommendationStates = $user
-            ? $actions->statesFor($user, 'anime', $recommendations->pluck('mal_id')->all())
+            ? $actions->statesFor($user, 'anime', $recommendations->pluck('malId')->map(fn ($id) => (int) $id)->all())
             : [];
 
         $recommendations = $recommendations
-            ->map(fn (\App\Models\CatalogEntity $item) => $this->present($item, $recommendationStates[$item->mal_id] ?? null))
+            ->map(function (array $item) use ($recommendationStates) {
+                $malId = (int) ($item['malId'] ?? 0);
+                $item['userActions'] = $recommendationStates[$malId] ?? null;
+
+                return $item;
+            })
             ->values();
 
-        $characterRelations = \App\Models\EntityRelation::query()
-            ->where('from_type', 'anime')
-            ->where('from_mal_id', $malId)
-            ->where('relation_type', 'character')
-            ->limit(12)
-            ->get();
+        $characters = collect(Cache::flexible(
+            "anime:detail:characters:v1:{$malId}:".($entity->updated_at?->timestamp ?? 0),
+            [120, 600],
+            function () use ($malId, $full): array {
+                $characters = collect(data_get($full, 'characters', []));
 
-        $characterEntities = \App\Models\CatalogEntity::query()
-            ->type('character')
-            ->whereIn('mal_id', $characterRelations->pluck('to_mal_id'))
-            ->get()
-            ->keyBy('mal_id');
+                if ($characters->isNotEmpty()) {
+                    return $characters->take(12)->map(function ($item) {
+                        return [
+                            'malId' => data_get($item, 'character.mal_id'),
+                            'name' => data_get($item, 'character.name', '—'),
+                            'role' => data_get($item, 'role', '—'),
+                            'animeName' => '—',
+                            'imageUrl' => data_get($item, 'character.images.jpg.image_url')
+                                ?? data_get($item, 'character.images.webp.image_url'),
+                            'colorIndex' => (int) (data_get($item, 'character.mal_id') ?? 0) % 6,
+                        ];
+                    })->values()->all();
+                }
 
-        $characters = collect(data_get($full, 'characters', []));
+                $characterRelations = EntityRelation::query()
+                    ->where('from_type', 'anime')
+                    ->where('from_mal_id', $malId)
+                    ->where('relation_type', 'character')
+                    ->limit(12)
+                    ->get();
 
-        if ($characters->isNotEmpty()) {
-            $characters = $characters->take(12)->map(function ($item) {
-                return [
-                    'malId' => data_get($item, 'character.mal_id'),
-                    'name' => data_get($item, 'character.name', '—'),
-                    'role' => data_get($item, 'role', '—'),
-                    'animeName' => '—',
-                    'imageUrl' => data_get($item, 'character.images.jpg.image_url')
-                        ?? data_get($item, 'character.images.webp.image_url'),
-                    'colorIndex' => (int) (data_get($item, 'character.mal_id') ?? 0) % 6,
-                ];
-            })->values();
-        } else {
-            $characters = $characterRelations->map(function (\App\Models\EntityRelation $relation) use ($characterEntities) {
-                $entity = $characterEntities->get($relation->to_mal_id);
-                $role = $relation->meta['role'] ?? null;
+                $characterEntities = CatalogEntity::query()
+                    ->type('character')
+                    ->whereIn('mal_id', $characterRelations->pluck('to_mal_id'))
+                    ->get()
+                    ->keyBy('mal_id');
 
-                return [
-                    'malId' => $relation->to_mal_id,
-                    'name' => $entity?->title ?? ($relation->meta['character']['name'] ?? '—'),
-                    'role' => $role ?? ($relation->meta['role'] ?? '—'),
-                    'animeName' => '—',
-                    'imageUrl' => $entity?->imageUrl(),
-                    'colorIndex' => $relation->to_mal_id % 6,
-                ];
-            })->values();
-        }
+                return $characterRelations->map(function (EntityRelation $relation) use ($characterEntities) {
+                    $entity = $characterEntities->get($relation->to_mal_id);
+                    $role = $relation->meta['role'] ?? null;
 
-        $externalReviews = EntityRelation::query()
-            ->where('from_type', 'anime')
-            ->where('from_mal_id', $malId)
-            ->where('relation_type', 'review')
-            ->orderByDesc('weight')
-            ->limit(8)
-            ->get()
-            ->map(function (EntityRelation $relation) {
-                $meta = $relation->meta ?? [];
-                return [
-                    'id' => $relation->to_mal_id,
-                    'user' => data_get($meta, 'user.username', 'Usuário'),
-                    'animeTitle' => data_get($meta, 'anime.title', '—'),
-                    'animeMalId' => data_get($meta, 'anime.mal_id', 0),
-                    'score' => (float) (data_get($meta, 'score', 0)),
-                    'content' => data_get($meta, 'review', ''),
-                    'date' => data_get($meta, 'date', ''),
-                    'isMine' => false,
-                    'mediaType' => 'anime',
-                ];
-            });
+                    return [
+                        'malId' => $relation->to_mal_id,
+                        'name' => $entity?->title ?? ($relation->meta['character']['name'] ?? '—'),
+                        'role' => $role ?? ($relation->meta['role'] ?? '—'),
+                        'animeName' => '—',
+                        'imageUrl' => $entity?->imageUrl(),
+                        'colorIndex' => $relation->to_mal_id % 6,
+                    ];
+                })->values()->all();
+            },
+            ['seconds' => 15],
+        ));
+
+        $externalReviews = collect(Cache::flexible(
+            "anime:detail:external-reviews:v1:{$malId}",
+            [120, 600],
+            function () use ($malId): array {
+                return EntityRelation::query()
+                    ->where('from_type', 'anime')
+                    ->where('from_mal_id', $malId)
+                    ->where('relation_type', 'review')
+                    ->orderByDesc('weight')
+                    ->limit(8)
+                    ->get()
+                    ->map(function (EntityRelation $relation) {
+                        $meta = $relation->meta ?? [];
+
+                        return [
+                            'id' => $relation->to_mal_id,
+                            'user' => data_get($meta, 'user.username', 'Usuário'),
+                            'animeTitle' => data_get($meta, 'anime.title', '—'),
+                            'animeMalId' => data_get($meta, 'anime.mal_id', 0),
+                            'score' => (float) (data_get($meta, 'score', 0)),
+                            'content' => data_get($meta, 'review', ''),
+                            'date' => data_get($meta, 'date', ''),
+                            'isMine' => false,
+                            'mediaType' => 'anime',
+                        ];
+                    })
+                    ->values()
+                    ->all();
+            },
+            ['seconds' => 15],
+        ));
 
         $userReviews = UserReview::query()
             ->with('user:id,name')
@@ -198,17 +239,22 @@ class AnimeController extends Controller
                 ->first()
             : null;
 
-        $news = $this->mergeNews(
-            data_get($full, 'news', []),
-            EntityRelation::query()
-                ->where('from_type', 'anime')
-                ->where('from_mal_id', $malId)
-                ->where('relation_type', 'news')
-                ->orderByDesc('created_at')
-                ->limit(20)
-                ->get()
-                ->pluck('meta')
-                ->all(),
+        $news = Cache::flexible(
+            "anime:detail:news:v1:{$malId}:".($entity->updated_at?->timestamp ?? 0),
+            [120, 600],
+            fn (): array => $this->mergeNews(
+                data_get($full, 'news', []),
+                EntityRelation::query()
+                    ->where('from_type', 'anime')
+                    ->where('from_mal_id', $malId)
+                    ->where('relation_type', 'news')
+                    ->orderByDesc('created_at')
+                    ->limit(20)
+                    ->get()
+                    ->pluck('meta')
+                    ->all(),
+            ),
+            ['seconds' => 15],
         );
 
         return Inertia::render('AnimeDetail', [
@@ -277,7 +323,7 @@ class AnimeController extends Controller
                     ->all(),
                 'externalLinks' => data_get($full, 'external', data_get($entity->payload, 'external', [])),
             ]),
-            'recommendations' => $recommendations,
+            'recommendations' => $recommendations->all(),
             'reviews' => $reviews,
             'myReview' => $myReview ? [
                 'score' => (float) $myReview->score,
@@ -286,7 +332,7 @@ class AnimeController extends Controller
             ] : null,
             'news' => $news,
             'watchedEpisodes' => $this->watchedEpisodesFromStatus($userStatus),
-            'characters' => $characters,
+            'characters' => $characters->all(),
         ]);
     }
 

@@ -14,4 +14,12 @@ return [
     'headers' => [
         'Accept' => 'application/json',
     ],
+    'cache' => [
+        'enabled' => env('JIKAN_CACHE_ENABLED', env('APP_ENV') !== 'testing'),
+        'default_ttl_seconds' => (int) env('JIKAN_CACHE_TTL_SECONDS', 900),
+        'negative_ttl_seconds' => (int) env('JIKAN_CACHE_NEGATIVE_TTL_SECONDS', 120),
+        'exclude' => [
+            'random/*',
+        ],
+    ],
 ];
