@@ -15,6 +15,7 @@ use App\Jobs\SeedWatchJob;
 use App\Jobs\SyncEntityJob;
 use App\Models\CatalogEntity;
 use App\Models\IngestCursor;
+use App\Services\HomePageSnapshotService;
 use App\Services\SitemapService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -83,6 +84,7 @@ Artisan::command('catalog:backfill-anime:stop {--cursor=anime_backfill}', functi
 
     if (! $cursor) {
         $this->warn("Cursor {$cursorName} não encontrado.");
+
         return;
     }
 
@@ -98,6 +100,7 @@ Artisan::command('catalog:backfill-anime:status {--cursor=anime_backfill}', func
 
     if (! $cursor) {
         $this->warn("Cursor {$cursorName} não encontrado.");
+
         return;
     }
 
@@ -177,6 +180,7 @@ Artisan::command('catalog:backfill-manga:stop {--cursor=manga_backfill}', functi
 
     if (! $cursor) {
         $this->warn("Cursor {$cursorName} não encontrado.");
+
         return;
     }
 
@@ -192,6 +196,7 @@ Artisan::command('catalog:backfill-manga:status {--cursor=manga_backfill}', func
 
     if (! $cursor) {
         $this->warn("Cursor {$cursorName} não encontrado.");
+
         return;
     }
 
@@ -289,8 +294,18 @@ Artisan::command('seo:sitemap:refresh {--write-file}', function (SitemapService 
     $this->line('Written file: '.($result['written'] ? 'yes' : 'no'));
 })->purpose('Refresh sitemap cache and optionally write /public/sitemap.xml');
 
+Artisan::command('metrics:refresh-home', function (HomePageSnapshotService $homePageSnapshotService) {
+    $payload = $homePageSnapshotService->refresh();
+
+    $this->info('Home snapshot refreshed.');
+    $this->line('Top anime: '.count($payload['topAnime'] ?? []));
+    $this->line('Current season: '.count($payload['currentSeason'] ?? []));
+    $this->line('Recommendations: '.count($payload['recommendations'] ?? []));
+})->purpose('Refresh the materialized public snapshot used by the home page');
+
 Schedule::job(new SeedTopJob)->everyFifteenMinutes();
 Schedule::job(new SeedSeasonsJob)->everyThirtyMinutes();
+Schedule::command('metrics:refresh-home')->everyTenMinutes();
 Schedule::job(new RefreshPlannerJob)->dailyAt('01:00');
 Schedule::job(new SeedDiscoveryJob)->dailyAt('03:00');
 Schedule::job(new SeedGenresJob)->dailyAt('04:00');

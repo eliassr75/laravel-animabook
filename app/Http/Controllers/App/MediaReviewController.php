@@ -5,13 +5,14 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Models\CatalogEntity;
 use App\Models\UserReview;
+use App\Services\HomePageSnapshotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class MediaReviewController extends Controller
 {
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, HomePageSnapshotService $homePageSnapshotService): JsonResponse
     {
         $payload = $request->validate([
             'media_type' => ['required', Rule::in(['anime', 'manga'])],
@@ -39,12 +40,14 @@ class MediaReviewController extends Controller
             ],
         );
 
+        $homePageSnapshotService->queueRefresh();
+
         return response()->json([
             'review' => $this->presentReview($review->fresh(['user'])),
         ]);
     }
 
-    public function destroy(Request $request): JsonResponse
+    public function destroy(Request $request, HomePageSnapshotService $homePageSnapshotService): JsonResponse
     {
         $payload = $request->validate([
             'media_type' => ['required', Rule::in(['anime', 'manga'])],
@@ -56,6 +59,8 @@ class MediaReviewController extends Controller
             ->where('media_type', (string) $payload['media_type'])
             ->where('mal_id', (int) $payload['mal_id'])
             ->delete();
+
+        $homePageSnapshotService->queueRefresh();
 
         return response()->json(['ok' => true]);
     }

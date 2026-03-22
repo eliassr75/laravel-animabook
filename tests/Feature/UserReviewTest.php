@@ -3,10 +3,13 @@
 use App\Models\User;
 use App\Models\UserReview;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 
 uses(RefreshDatabase::class);
 
 it('creates or updates user review for media', function () {
+    Queue::fake();
+
     $user = User::factory()->create();
 
     $first = $this->actingAs($user)->postJson('/app/media-reviews', [
@@ -31,9 +34,12 @@ it('creates or updates user review for media', function () {
     $second->assertOk()->assertJsonPath('review.score', 9);
     expect(UserReview::query()->where('user_id', $user->id)->count())->toBe(1);
     expect((float) UserReview::query()->firstOrFail()->score)->toBe(9.0);
+    Queue::assertPushed(\App\Jobs\RefreshHomePageSnapshotJob::class);
 });
 
 it('deletes user review for media', function () {
+    Queue::fake();
+
     $user = User::factory()->create();
 
     UserReview::query()->create([
@@ -51,4 +57,5 @@ it('deletes user review for media', function () {
 
     $response->assertOk()->assertJsonPath('ok', true);
     expect(UserReview::query()->where('user_id', $user->id)->count())->toBe(0);
+    Queue::assertPushed(\App\Jobs\RefreshHomePageSnapshotJob::class);
 });
